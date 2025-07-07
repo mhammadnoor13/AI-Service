@@ -16,6 +16,7 @@ class EmbeddingClient:
     async def retrieve(self, case_query: CaseQuery) -> List[Document]:
         
         url = f"{self._base_url}/get-similar"
+
         payload: dict = {
             "raw_text":case_query.text,
             "top_k": case_query.k

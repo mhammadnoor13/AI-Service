@@ -51,6 +51,8 @@ class LlamaGeneration(GenerationStrategy):
             "content": "You are a knowledgeable consultant."
         }
         docs_snippet = "\n".join(f"— {d['snippet']}" for d in docs)
+        #TODO Remove
+        n = 1
         user_content = (
             f"CONTEXT:\n{docs_snippet}\n\n"
             f"Case: {query}\n\n"
@@ -60,10 +62,10 @@ class LlamaGeneration(GenerationStrategy):
         user_msg = {"role": "user", "content": user_content}
         print([system_msg,user_msg])
         resp = await self._client.chat([system_msg, user_msg])
-        breakpoint
 
         text = resp["choices"][0]["message"]["content"]
         m = re.search(r"```json\s*(\[[\s\S]*?\])\s*```", text, flags=re.IGNORECASE)
+
         if m:
             candidate = m.group(1)
         else:
@@ -80,4 +82,6 @@ class LlamaGeneration(GenerationStrategy):
         except json.JSONDecodeError:
             logger.warning("JSON parse failed on candidate: %r", candidate)
             pass
+
+        print("----> This Break Point")
         return [Suggestion(text=text.strip())]

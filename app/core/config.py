@@ -1,6 +1,13 @@
 from functools import lru_cache
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+PHASE = os.getenv("APP_ENV","development")
+
+ENV_FILES = [
+    "../.env.common",
+    f"../.env.{PHASE}",
+]
 
 class Settings(BaseSettings):
     EMBEDDING_SERVICE_URL: str = "http://127.0.0.1:8010"
@@ -9,8 +16,8 @@ class Settings(BaseSettings):
     REQUEST_TIMEOUT:      int = 120
     EMBEDDING_SERVICE_TOKEN: str | None = None
     LLM_API_KEY:             str | None = None
-
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    ENV:str
+    model_config = SettingsConfigDict(env_file=ENV_FILES, extra="ignore")
 
 
 

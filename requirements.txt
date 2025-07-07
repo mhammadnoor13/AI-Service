@@ -1,0 +1,5 @@
+fastapi
+uvicorn[standard]
+httpx
+pydantic-settings
+aio-pika>=8.0.0
