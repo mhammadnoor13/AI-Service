@@ -9,6 +9,10 @@ class CaseAssignedEvent(BaseModel):
     caseId:       UUID
     consultantId: UUID
 
+class CaseSuggestions(BaseModel):
+    case_id: UUID
+    suggestions: List[Suggestion]
+
 class CaseSolutionsGeneratedEvent(BaseModel):
     case_id: UUID
-    solutions: List[Suggestion]
+    suggestions: List[Suggestion]

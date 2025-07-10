@@ -8,6 +8,11 @@ from fastapi import logger
 from app.clients.llm_client import LLMClient
 from app.domain.models import Suggestion
 
+import requests
+from dataclasses import dataclass
+from typing import List, Dict
+from groq import Groq
+
 _PROMPT_TEMPLATE = """
 SYSTEM:
 You are an expert consultant. Using the following context documents, generate {{n}} distinct solution suggestions.
@@ -85,3 +90,48 @@ class LlamaGeneration(GenerationStrategy):
 
         print("----> This Break Point")
         return [Suggestion(text=text.strip())]
+
+
+
+@dataclass
+class APIGenerator(GenerationStrategy):
+    api_key: str
+    model_name: str
+    system_prompt: str = (
+        "You are a careful medical assistant. "
+        "Use ONLY the provided CONTEXT to answer, citing sources as [1], [2] …"
+    )
+    temperature: float = 0.2
+    max_tokens: int = 512
+    stream: bool = False
+
+    def _build_prompt(self, question: str, contexts: List[str]) -> List[Dict]:
+        numbered = [f"[{i+1}] {c}" for i, c in enumerate(contexts)]
+        context_block = "\n\n".join(numbered)
+        user_block = f"CONTEXT:\n{context_block}\n\nQUESTION:\n{question}\n\nANSWER:"
+        return [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user",   "content": user_block},
+        ]
+
+    def generate(self, question: str, contexts: List[Dict[str,str]]) -> str:
+        client = Groq(api_key=self.api_key)
+        snippets = contexts['snippet']
+        completion = client.chat.completions.create(
+            model      = self.model_name,
+            messages   = self._build_prompt(question, snippets),
+            temperature= self.temperature,
+            max_completion_tokens = self.max_tokens,
+            top_p      = 0.95,
+            stream     = self.stream,
+        )
+
+        if self.stream:
+            parts = (
+                chunk.choices[0].delta.content
+                for chunk in completion
+                if chunk.choices[0].delta.content
+            )
+            return "".join(parts).strip()
+        else:
+            return completion.choices[0].message.content.strip()

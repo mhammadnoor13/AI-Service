@@ -1,4 +1,4 @@
-from app.domain.events import CaseAssignedEvent, CaseSolutionsGeneratedEvent
+from app.domain.events import CaseAssignedEvent, CaseSolutionsGeneratedEvent, CaseSuggestions
 from app.domain.models import CaseQuery, Suggestion
 from app.domain.protocols import CaseServiceClient, EventPublisher
 from app.services.rag_service import RagService
@@ -20,10 +20,9 @@ class CaseAssignedHandler:
         
         case_query = CaseQuery(text=case_data["description"],k=10)
         res = await self._rag.solve_case(case_query)
-        
-        out_evt = CaseSolutionsGeneratedEvent(
+        out_msg = CaseSuggestions(
             case_id = evt.caseId,
-            solutions= res.suggestions
+            suggestions= res.suggestions
         )
 
-        await self._publisher.publish_solutions(out_evt)
+        await self._case_client.post_case(out_msg)
