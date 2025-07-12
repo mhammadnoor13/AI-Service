@@ -12,7 +12,6 @@ router = APIRouter()
 
 
 def get_rag_service() -> RagService:
-    # In main.py you’ll wire this up to return a singleton RagService
     from app.main import rag_service
     return rag_service
 
@@ -39,8 +38,6 @@ async def solve_case(
         result = await rag_service.solve_case(case_query, n)
         return result
     except ServiceUnavailable as e:
-        # Upstream retrieval or LLM failure
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        # Unexpected error
         raise HTTPException(status_code=500, detail="Internal server error")

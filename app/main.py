@@ -6,7 +6,7 @@ from app.infrastructure.rabbitmq_adapter import AioPikaEventPublisher, start_cas
 from app.services.case_assigned_handler import CaseAssignedHandler
 from app.services.retrieval import EmbeddingRetrieval
 from app.clients.llm_client import LLMClient
-from app.services.generation import LlamaGeneration
+from app.services.generation import APIGenerator, LlamaGeneration
 from app.services.rag_service import RagService
 from app.api.v1.solve_case import router as solve_router
 
@@ -17,7 +17,7 @@ embedding_client = EmbeddingClient()
 llm_client = LLMClient()
 
 retrieval  = EmbeddingRetrieval(embedding_client)
-generation = LlamaGeneration(llm_client)
+generation = APIGenerator(api_key=settings.LLM_API_KEY,model_name="deepseek-r1-distill-llama-70b",stream=False)
 
 rag_service = RagService(
     retrieval=retrieval,

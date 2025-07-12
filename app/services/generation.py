@@ -98,28 +98,39 @@ class APIGenerator(GenerationStrategy):
     api_key: str
     model_name: str
     system_prompt: str = (
-        "You are a careful medical assistant. "
+        "You are a professional Doctor."
         "Use ONLY the provided CONTEXT to answer, citing sources as [1], [2] …"
+        "Do NOT output any chain-of-thought, analysis, or explanatory text—"
+        "return only a JSON array of strings."
     )
     temperature: float = 0.2
     max_tokens: int = 512
     stream: bool = False
-
-    def _build_prompt(self, question: str, contexts: List[str]) -> List[Dict]:
+    def _build_prompt(self, question: str, contexts: List[str], n=1) -> List[Dict]:
         numbered = [f"[{i+1}] {c}" for i, c in enumerate(contexts)]
         context_block = "\n\n".join(numbered)
-        user_block = f"CONTEXT:\n{context_block}\n\nQUESTION:\n{question}\n\nANSWER:"
+        user_block =(f"CONTEXT:\n{context_block}\n\n"
+                    f"Case: {question}\n\n"
+                    f"Please generate {n} distinct solution suggestions.\n"
+                    f"⮞ **Output requirements**:\n"
+                    f"  • **Only** return a JSON array of strings (no prose, no lists, no bullet points).\n"
+                    f"  • The array must look exactly like:\n"
+                    f"    `[\"Suggestion 1\", \"Suggestion 2\", …]`\n"
+                    "⮞ **Medical style**:\n"
+                    "  • Each string **must** follow this pattern:\n"
+                    "      “You are [symptom/condition] because of [cause]. You should [action].”\n"
+        )
         return [
             {"role": "system", "content": self.system_prompt},
             {"role": "user",   "content": user_block},
         ]
 
-    def generate(self, question: str, contexts: List[Dict[str,str]]) -> str:
+    async def generate(self, question: str, contexts: List[Dict[str,str]], n:int) -> List[Suggestion]:
+        snippets = [ctx["snippet"] for ctx in contexts]
         client = Groq(api_key=self.api_key)
-        snippets = contexts['snippet']
         completion = client.chat.completions.create(
             model      = self.model_name,
-            messages   = self._build_prompt(question, snippets),
+            messages   = self._build_prompt(question, snippets, n),
             temperature= self.temperature,
             max_completion_tokens = self.max_tokens,
             top_p      = 0.95,
@@ -127,11 +138,34 @@ class APIGenerator(GenerationStrategy):
         )
 
         if self.stream:
-            parts = (
+            text ="".join(
                 chunk.choices[0].delta.content
                 for chunk in completion
                 if chunk.choices[0].delta.content
-            )
-            return "".join(parts).strip()
+            ).strip()
         else:
-            return completion.choices[0].message.content.strip()
+            text = completion.choices[0].message.content.strip()
+
+        clean = re.sub(r"<think>[\s\S]*?</think>\s*", "", text)
+        m = re.search(r"```json\s*(\[[\s\S]*?\])\s*```", clean, flags=re.IGNORECASE)
+
+        if not m:
+            m = re.search(r"(\[[\s\S]*\])\s*$", clean)
+
+        candidate = m.group(1) if m else None
+
+        suggestions: List[Suggestion] = []
+        if candidate:
+            try:
+                arr = json.loads(candidate)
+                if isinstance(arr, list) and all(isinstance(s, str) for s in arr):
+                    suggestions = [Suggestion(text=s) for s in arr]
+            except json.JSONDecodeError:
+                pass
+
+        if not suggestions:
+            suggestions = [Suggestion(text=clean)]
+
+
+        return suggestions
+
