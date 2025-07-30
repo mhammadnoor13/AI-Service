@@ -10,7 +10,6 @@ class HttpxCaseServiceClient(CaseServiceClient):
 
     async def post_case(self, payload:CaseSuggestions):
         json_body = jsonable_encoder({"suggestions": payload.suggestions})
-        breakpoint()
         response = await self._client.post(
             f"cases/{payload.case_id}/add-suggestions",
             json = json_body,

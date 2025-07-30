@@ -3,3 +3,5 @@ uvicorn[standard]
 httpx
 pydantic-settings
 aio-pika>=8.0.0
+groq==0.29.0
+requests==2.32.4

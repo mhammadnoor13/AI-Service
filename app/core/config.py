@@ -10,7 +10,7 @@ ENV_FILES = [
 ]
 
 class Settings(BaseSettings):
-    EMBEDDING_SERVICE_URL: str = "http://127.0.0.1:8010"
+    EMBEDDING_SERVICE_URL: str 
     LLM_API_BASE:         str = "http://127.0.0.1:1234/v1"
     LLM_MODEL_NAME:       str = "meta-llama-3.1-8b-instruct"
     REQUEST_TIMEOUT:      int = 120

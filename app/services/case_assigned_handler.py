@@ -19,7 +19,7 @@ class CaseAssignedHandler:
         case_data = await self._case_client.get_case(evt.caseId)
         
         case_query = CaseQuery(text=case_data["description"],k=10)
-        res = await self._rag.solve_case(case_query)
+        res = await self._rag.solve_case(case_query, consultant_id=evt.consultantId, n=3)
         out_msg = CaseSuggestions(
             case_id = evt.caseId,
             suggestions= res.suggestions

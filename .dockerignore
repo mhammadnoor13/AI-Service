@@ -3,3 +3,6 @@ __pycache__/
 venv/
 .env*
 .git
+
+**/__pycache__/
+*.py[cod]

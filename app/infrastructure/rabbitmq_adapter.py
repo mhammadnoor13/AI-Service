@@ -1,11 +1,16 @@
 import json
+import os
 from typing import Awaitable, Callable
 from app.domain.events import CaseAssignedEvent, CaseSolutionsGeneratedEvent
 from app.domain.protocols import EventPublisher
 from aio_pika import ExchangeType, IncomingMessage, connect_robust, Message
 from aio_pika.abc import AbstractRobustConnection
 
-RABBIT_URL            = "amqp://guest:guest@localhost:5672/"
+RABBIT_URL = os.getenv(
+    "RABBITMQ_URL",
+    "amqp://guest:guest@localhost:5672/"
+)
+
 ASSIGNED_EXCHANGE = "Contracts.Shared.Events:CaseAssigned"
 ASSIGNED_ROUTING_KEY  = "case-assigned"
 ASSIGNED_QUEUE_NAME   = "ai-service.case-assigned"

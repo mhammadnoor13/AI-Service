@@ -1,11 +1,11 @@
-# services/rag_service.py
-
+import logging
 from typing import List
+from uuid import UUID
 from app.domain.models import CaseQuery, Document, Suggestion, SolveCaseResult
 from app.services.retrieval import RetrievalStrategy
 from app.services.generation import GenerationStrategy
 from app.core.exceptions import ServiceUnavailable
-
+logger = logging.getLogger(__name__)
 
 class RagService:
     """
@@ -28,8 +28,9 @@ class RagService:
     async def solve_case(
         self,
         case_query: CaseQuery,
-        n: int = None,          
-    ) -> SolveCaseResult:
+        consultant_id: UUID,       
+        n: int = None,
+    ) -> SolveCaseResult: 
         
         n_suggestions = n or case_query.k
 
@@ -38,7 +39,9 @@ class RagService:
             case_query = await pp.run(case_query)
 
         try:
-            docs: List[Document] = await self._retrieval.retrieve(case_query)
+            docs: List[Document] = await self._retrieval.retrieve(case_query, consultant_id)
+            logger.info(f"📄 Retrieved {len(docs)} documents for consultant_id={consultant_id}")
+
         except Exception as e:
             raise ServiceUnavailable(f"Retrieval failed: {e}")
 
@@ -49,6 +52,7 @@ class RagService:
                 [doc.dict() for doc in docs],  
                 n_suggestions
             )
+            logger.info(f"✅ Generated {len(suggestions)} suggestions for query.")
         except Exception as e:
             raise ServiceUnavailable(f"Generation failed: {e}")
 

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import json
+import logging
 import re
 from typing import Dict, List
 
@@ -12,6 +13,9 @@ import requests
 from dataclasses import dataclass
 from typing import List, Dict
 from groq import Groq
+
+logger = logging.getLogger(__name__)
+
 
 _PROMPT_TEMPLATE = """
 SYSTEM:
@@ -65,7 +69,7 @@ class LlamaGeneration(GenerationStrategy):
             f"Return them as a JSON array of strings."
         )
         user_msg = {"role": "user", "content": user_content}
-        print([system_msg,user_msg])
+        logger.info(user_msg)
         resp = await self._client.chat([system_msg, user_msg])
 
         text = resp["choices"][0]["message"]["content"]
@@ -102,6 +106,8 @@ class APIGenerator(GenerationStrategy):
         "Use ONLY the provided CONTEXT to answer, citing sources as [1], [2] …"
         "Do NOT output any chain-of-thought, analysis, or explanatory text—"
         "return only a JSON array of strings."
+        "استخدم العربية الفصحى البسيطة - لا تدرج أي كلمات من لغة أخرى، وتجنب المصطلحات الطبية المعقدة."
+
     )
     temperature: float = 0.2
     max_tokens: int = 512
@@ -119,6 +125,8 @@ class APIGenerator(GenerationStrategy):
                     "⮞ **Medical style**:\n"
                     "  • Each string **must** follow this pattern:\n"
                     "      “You are [symptom/condition] because of [cause]. You should [action].”\n"
+                    "\n⮞ **اللغة**: يجب أن تكون العبارات بالعربية الفصحى البسيطة فقط - لا تدرج أي كلمات من لغة أخرى، مفهومة للمستخدم العادي دون مصطلحات طبية معقدة."
+                    "\n⮞ **كلّ اقتراح**: جملة كاملة ذات معنى بحد أدنى 30 كلمة."
         )
         return [
             {"role": "system", "content": self.system_prompt},

@@ -1,3 +1,6 @@
+import asyncio
+import logging
+from aiormq import AMQPConnectionError
 from fastapi import Depends, FastAPI
 from app.clients.embedding_client import EmbeddingClient
 from app.core.config import get_settings
@@ -13,11 +16,16 @@ from app.api.v1.solve_case import router as solve_router
 settings = get_settings()
 
 
+logging.basicConfig(
+    level=logging.INFO,  
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+
 embedding_client = EmbeddingClient()
 llm_client = LLMClient()
 
 retrieval  = EmbeddingRetrieval(embedding_client)
-generation = APIGenerator(api_key=settings.LLM_API_KEY,model_name="deepseek-r1-distill-llama-70b",stream=False)
+generation = APIGenerator(api_key=settings.LLM_API_KEY,model_name="llama-3.3-70b-versatile",stream=False)
 
 rag_service = RagService(
     retrieval=retrieval,
@@ -44,30 +52,40 @@ async def on_startup():
 
     global rabbit_connection, publisher
 
-    # 1) Publisher for solutions
     publisher = AioPikaEventPublisher(
-        url="amqp://guest:guest@localhost:5672/",
+        url="amqp://guest:guest@rabbitmq:5672/",
         exchange_name="case-solutions-generated",
         routing_key="case.solutions.generated"
     )
-    await publisher.connect()
+    
+    logger = logging.getLogger(__name__)
 
-    # 2) HTTP client for CaseService
-    case_client = HttpxCaseServiceClient(base_url="http://localhost:5010/")
+    for attempt in range(1, 7):
+        try:
+            await publisher.connect()
+            logger.info("✅ Connected to RabbitMQ on attempt %d", attempt)
+            break
+        except AMQPConnectionError as e:
+            logger.warning(
+                "RabbitMQ not ready (attempt %d): %s; retrying in 5s…",
+                attempt, e
+            )
+            await asyncio.sleep(5)
+    else:
+        logger.error("Could not connect to RabbitMQ after multiple attempts")
+        raise RuntimeError("RabbitMQ connection failed")
 
-    # 3) Your RAG logic
+    case_client = HttpxCaseServiceClient(base_url="http://cases:8080/")
+
     rag: RagService = get_rag_service()
 
-    # 4) Compose the handler
     handler = CaseAssignedHandler(
         case_client=case_client,
         publisher=publisher,
         rag=rag
     )
 
-    # 5) Start the consumer, passing in handler.handle
     rabbit_connection = await start_case_assigned_consumer(handler.handle)
-    # app.logger.info("✅ RabbitMQ consumer for CaseAssigned started")
 
     s = get_settings()
     print("Settings",s.ENV)

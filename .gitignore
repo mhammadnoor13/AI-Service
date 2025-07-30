@@ -1,0 +1,21 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Env files
+.env
+.env.*
+!.env.example     # if you track a sample
+
+# Docker / VSCode
+.dockerignore
+.vscode/
+
+# Logs, caches, etc.
+*.log

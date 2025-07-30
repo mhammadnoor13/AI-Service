@@ -1,6 +1,7 @@
 # api/v1/solve_case.py
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from typing import Optional
 
 from app.domain.models import CaseQuery, SolveCaseResult
@@ -28,6 +29,7 @@ async def solve_case(
         ge=1,
         description="Number of suggestions to generate (defaults to k)",
     ),
+    x_user_id: UUID = Header(..., alias="X-User-Id"),
     rag_service: RagService = Depends(get_rag_service),
 ) -> SolveCaseResult:
     """
@@ -35,7 +37,7 @@ async def solve_case(
     retrieve relevant documents and generate solution suggestions.
     """
     try:
-        result = await rag_service.solve_case(case_query, n)
+        result = await rag_service.solve_case(case_query, consultant_id=x_user_id, n=n)
         return result
     except ServiceUnavailable as e:
         raise HTTPException(status_code=503, detail=str(e))
