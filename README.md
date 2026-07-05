@@ -420,17 +420,3 @@ Example response:
 }
 ```
 
-### Health Check
-
-```http
-GET /health
-```
-
-Example response:
-
-```json
-{
-  "status": "ok"
-}
-```
-
