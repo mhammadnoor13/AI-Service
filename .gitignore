@@ -1,21 +1,49 @@
-# Byte-compiled / optimized / DLL files
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Distribution / packaging
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Testing/cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
 build/
 dist/
 *.egg-info/
 
-# Env files
-.env
-.env.*
-!.env.example     # if you track a sample
+# Docker/local compose overrides
+docker-compose.override.yml
 
-# Docker / VSCode
-.dockerignore
-.vscode/
-
-# Logs, caches, etc.
-*.log
+# Temporary files
+tmp/
+temp/
+*.tmp

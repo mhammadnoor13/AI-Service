@@ -1,23 +1,21 @@
-FROM python:3.11-slim AS base
+# syntax=docker/dockerfile:1.6
+
+FROM python:3.11-slim
+
 WORKDIR /app
 
-# System deps
-RUN apt-get update \
- && apt-get install -y --no-install-recommends gcc \
- && rm -rf /var/lib/apt/lists/*
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV APP_ENV=production
 
-# Copy and install Python dependencies
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-# COPY . /app
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip \
+    && pip install -r /app/requirements.txt
+
+COPY app /app/app
 
 EXPOSE 8000
-ENV PYTHONUNBUFFERED=1 APP_ENV=production
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "info"]
-
-
-
-
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]

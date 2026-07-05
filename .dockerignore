@@ -1,8 +1,21 @@
 __pycache__/
 *.pyc
-venv/
-.env*
-.git
+*.pyo
+*.pyd
 
-**/__pycache__/
-*.py[cod]
+.env
+.env.*
+!.env.example
+
+.git/
+.gitignore
+
+.venv/
+venv/
+env/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+README.md

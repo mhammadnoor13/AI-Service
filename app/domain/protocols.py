@@ -1,20 +1,60 @@
 from abc import ABC, abstractmethod
-from typing import Dict
 from uuid import UUID
-from app.domain.events import CaseSolutionsGeneratedEvent
+
+from app.domain.events import CaseDraftGeneratedEvent
+from app.domain.models import AIDraft, CaseQuery, RetrievedContext
 
 
 class CaseServiceClient(ABC):
     @abstractmethod
-    async def get_case(self, case_id: UUID) -> Dict:
+    async def get_case(self, case_id: UUID) -> dict:
         """
-        Fetch case details (e.g. description) from the CaseService API.
-        Returns the raw JSON as a dict.
+        Fetch case details from the Case Service.
         """
+        pass
+
+    @abstractmethod
+    async def add_ai_draft(self, case_id: UUID, draft: AIDraft) -> None:
+        """
+        Send the generated AI draft back to the Case Service or Consultant Service.
+        """
+        pass
+
+
+class SimilaritySearchClient(ABC):
+    @abstractmethod
+    async def search(
+        self,
+        query: CaseQuery,
+        consultant_id: UUID,
+    ) -> list[RetrievedContext]:
+        """
+        Retrieve relevant context from the Embedding Service.
+        """
+        pass
+
+
+class GenerationModel(ABC):
+    @abstractmethod
+    async def generate_draft(
+        self,
+        query: CaseQuery,
+        contexts: list[RetrievedContext],
+        n: int,
+    ) -> AIDraft:
+        """
+        Generate a structured AI draft using the case query and retrieved context.
+        """
+        pass
+
 
 class EventPublisher(ABC):
     @abstractmethod
-    async def publish_solutions(self, evt:CaseSolutionsGeneratedEvent) -> None:
+    async def publish_case_draft_generated(
+        self,
+        event: CaseDraftGeneratedEvent,
+    ) -> None:
         """
-        Publish CaseSolutionsGeneratedEvent to the message broker.
+        Publish an event after AI draft generation.
         """
+        pass

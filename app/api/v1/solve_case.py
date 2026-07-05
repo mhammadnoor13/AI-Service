@@ -1,45 +1,59 @@
-# api/v1/solve_case.py
-
-from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+import logging
 from typing import Optional
+from uuid import UUID
 
-from app.domain.models import CaseQuery, SolveCaseResult
-from app.services.rag_service import RagService
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+
+from app.application.use_cases.generate_case_draft import GenerateCaseDraftUseCase
 from app.core.exceptions import ServiceUnavailable
-from app.core.config import get_settings
+from app.dependencies import get_generate_case_draft_use_case
+from app.domain.models import CaseQuery, SolveCaseResult
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-def get_rag_service() -> RagService:
-    from app.main import rag_service
-    return rag_service
-
-
 @router.post(
-    "/solve-case",
+    "/draft-recommendation",
     response_model=SolveCaseResult,
-    summary="Retrieve context docs and generate suggestions for a case",
+    summary="Generate an AI-assisted draft recommendation for a case",
 )
-async def solve_case(
+async def generate_draft_recommendation(
     case_query: CaseQuery,
     n: Optional[int] = Query(
-        None,
+        default=None,
         ge=1,
-        description="Number of suggestions to generate (defaults to k)",
+        le=5,
+        description="Number of draft recommendations to generate.",
     ),
     x_user_id: UUID = Header(..., alias="X-User-Id"),
-    rag_service: RagService = Depends(get_rag_service),
+    use_case: GenerateCaseDraftUseCase = Depends(get_generate_case_draft_use_case),
 ) -> SolveCaseResult:
     """
-    Given a case description and desired top-k,
-    retrieve relevant documents and generate solution suggestions.
+    Generate AI-assisted draft recommendations for a case.
+
+    The AI output is not final advice.
+    It must be reviewed by a human consultant.
     """
+
     try:
-        result = await rag_service.solve_case(case_query, consultant_id=x_user_id, n=n)
-        return result
-    except ServiceUnavailable as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
+        return await use_case.execute(
+            query=case_query,
+            consultant_id=x_user_id,
+            n=n,
+        )
+
+    except ServiceUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    except Exception as exc:
+        logger.exception("Unexpected error while generating draft recommendation")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error",
+        ) from exc
+

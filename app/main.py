@@ -1,103 +1,170 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
+
 from aiormq import AMQPConnectionError
-from fastapi import Depends, FastAPI
-from app.clients.embedding_client import EmbeddingClient
+from fastapi import FastAPI
+
+from app.api.v1.solve_case import router as solve_case_router
+from app.application.handlers.case_assigned_handler import CaseAssignedHandler
+from app.application.use_cases.generate_case_draft import GenerateCaseDraftUseCase
 from app.core.config import get_settings
-from app.infrastructure.httpx_client import HttpxCaseServiceClient
-from app.infrastructure.rabbitmq_adapter import AioPikaEventPublisher, start_case_assigned_consumer
-from app.services.case_assigned_handler import CaseAssignedHandler
-from app.services.retrieval import EmbeddingRetrieval
-from app.clients.llm_client import LLMClient
-from app.services.generation import APIGenerator, LlamaGeneration
-from app.services.rag_service import RagService
-from app.api.v1.solve_case import router as solve_router
-
-settings = get_settings()
-
+from app.infrastructure.clients.case_service_client import HttpxCaseServiceClient
+from app.infrastructure.clients.embedding_service_client import EmbeddingServiceClient
+from app.infrastructure.generation.mock_generation_model import MockGenerationModel
+from app.infrastructure.generation.openai_compatible_generation_model import (
+    OpenAICompatibleGenerationModel,
+)
+from app.infrastructure.rabbitmq_adapter import (
+    AioPikaEventPublisher,
+    start_case_assigned_consumer,
+)
 
 logging.basicConfig(
-    level=logging.INFO,  
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
-embedding_client = EmbeddingClient()
-llm_client = LLMClient()
+logger = logging.getLogger(__name__)
 
-retrieval  = EmbeddingRetrieval(embedding_client)
-generation = APIGenerator(api_key=settings.LLM_API_KEY,model_name="llama-3.3-70b-versatile",stream=False)
 
-rag_service = RagService(
-    retrieval=retrieval,
-    generation=generation,
-    pre_processors=[],
-)
+def build_generation_model(settings):
+    provider = settings.AI_PROVIDER.lower()
 
-app = FastAPI(
-    title="RAG Case-Solver",
-    version="0.1.0",
-    description="Retrieve relevant documents and generate solution suggestions via RAG",
-)
+    if provider == "mock":
+        logger.info("Using MockGenerationModel")
+        return MockGenerationModel()
 
-def get_rag_service() -> RagService:
-    return rag_service
+    if provider == "openai_compatible":
+        logger.info(
+            "Using OpenAI-compatible generation model: %s",
+            settings.LLM_MODEL_NAME,
+        )
 
-@app.on_event("startup")
-async def on_startup():
-    embedding_client = EmbeddingClient()
-    llm_client = LLMClient()
+        return OpenAICompatibleGenerationModel(
+            base_url=settings.LLM_API_BASE,
+            model_name=settings.LLM_MODEL_NAME,
+            api_key=settings.LLM_API_KEY,
+            timeout=settings.REQUEST_TIMEOUT,
+            temperature=settings.LLM_TEMPERATURE,
+            max_tokens=settings.LLM_MAX_TOKENS,
+        )
 
-    retrieval  = EmbeddingRetrieval(embedding_client)
-    generation = LlamaGeneration(llm_client)
+    raise ValueError(f"Unsupported AI_PROVIDER: {settings.AI_PROVIDER}")
 
-    global rabbit_connection, publisher
 
-    publisher = AioPikaEventPublisher(
-        url="amqp://guest:guest@rabbitmq:5672/",
-        exchange_name="case-solutions-generated",
-        routing_key="case.solutions.generated"
-    )
-    
-    logger = logging.getLogger(__name__)
-
-    for attempt in range(1, 7):
+async def connect_rabbitmq_with_retries(publisher, attempts: int = 6) -> None:
+    for attempt in range(1, attempts + 1):
         try:
             await publisher.connect()
-            logger.info("✅ Connected to RabbitMQ on attempt %d", attempt)
-            break
-        except AMQPConnectionError as e:
+            logger.info("Connected to RabbitMQ on attempt %s", attempt)
+            return
+
+        except AMQPConnectionError as exc:
             logger.warning(
-                "RabbitMQ not ready (attempt %d): %s; retrying in 5s…",
-                attempt, e
+                "RabbitMQ not ready on attempt %s/%s: %s",
+                attempt,
+                attempts,
+                exc,
             )
             await asyncio.sleep(5)
-    else:
-        logger.error("Could not connect to RabbitMQ after multiple attempts")
-        raise RuntimeError("RabbitMQ connection failed")
 
-    case_client = HttpxCaseServiceClient(base_url="http://cases:8080/")
+    raise RuntimeError("RabbitMQ connection failed after multiple attempts")
 
-    rag: RagService = get_rag_service()
 
-    handler = CaseAssignedHandler(
-        case_client=case_client,
-        publisher=publisher,
-        rag=rag
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+
+    similarity_search_client = EmbeddingServiceClient(
+        base_url=settings.EMBEDDING_SERVICE_URL,
+        timeout=settings.REQUEST_TIMEOUT,
+        token=settings.EMBEDDING_SERVICE_TOKEN,
     )
 
-    rabbit_connection = await start_case_assigned_consumer(handler.handle)
+    generation_model = build_generation_model(settings)
 
-    s = get_settings()
-    print("Settings",s.ENV)
-    
+    generate_case_draft_use_case = GenerateCaseDraftUseCase(
+        similarity_search_client=similarity_search_client,
+        generation_model=generation_model,
+        default_suggestion_count=settings.DEFAULT_SUGGESTION_COUNT,
+    )
+
+    app.state.generate_case_draft_use_case = generate_case_draft_use_case
+    app.state.rabbit_connection = None
+    app.state.rabbit_publisher = None
+
+    if settings.ENABLE_RABBITMQ_CONSUMER:
+        publisher = AioPikaEventPublisher(
+            url=settings.RABBITMQ_URL,
+            exchange_name=settings.CASE_DRAFT_GENERATED_EXCHANGE,
+            routing_key=settings.CASE_DRAFT_GENERATED_ROUTING_KEY,
+        )
+
+        await connect_rabbitmq_with_retries(publisher)
+
+        case_client = HttpxCaseServiceClient(
+            base_url=settings.CASE_SERVICE_URL,
+            timeout=30,
+        )
+
+        handler = CaseAssignedHandler(
+            case_client=case_client,
+            generate_case_draft_use_case=generate_case_draft_use_case,
+            publisher=publisher,
+        )
+
+        rabbit_connection = await start_case_assigned_consumer(
+            callback=handler.handle,
+            url=settings.RABBITMQ_URL,
+            exchange_name=settings.CASE_ASSIGNED_EXCHANGE,
+            routing_key=settings.CASE_ASSIGNED_ROUTING_KEY,
+            queue_name=settings.CASE_ASSIGNED_QUEUE_NAME,
+        )
+
+        app.state.rabbit_connection = rabbit_connection
+        app.state.rabbit_publisher = publisher
+
+        logger.info("RabbitMQ consumer enabled")
+
+    else:
+        logger.info("RabbitMQ consumer disabled")
+
+    logger.info("AI Service started in ENV=%s", settings.ENV)
+
+    yield
+
+    rabbit_connection = getattr(app.state, "rabbit_connection", None)
+
+    if rabbit_connection and not rabbit_connection.is_closed:
+        await rabbit_connection.close()
+        logger.info("RabbitMQ consumer connection closed")
+
+    publisher = getattr(app.state, "rabbit_publisher", None)
+
+    if publisher:
+        await publisher.close()
+        logger.info("RabbitMQ publisher connection closed")
+
+
+app = FastAPI(
+    title="AI Service",
+    version="0.2.0",
+    description=(
+        "Generation side of the AI-Aided Consultant Platform. "
+        "Retrieves context from the Embedding Service and generates "
+        "AI-assisted draft recommendations for human consultant review."
+    ),
+    lifespan=lifespan,
+)
 
 
 app.include_router(
-    solve_router,
+    solve_case_router,
     prefix="/v1",
-    dependencies=[],
-    tags=["solve-case"],
+    tags=["AI Draft Generation"],
 )
+
 
 @app.get("/health", summary="Health check")
 async def health():

@@ -1,18 +1,27 @@
 from typing import List
 from uuid import UUID
-from pydantic import BaseModel
 
-from app.domain.models import Suggestion
+from pydantic import BaseModel, Field, ConfigDict
+
+from app.domain.models import DraftRecommendation
 
 
 class CaseAssignedEvent(BaseModel):
-    caseId:       UUID
-    consultantId: UUID
+    """
+    Event consumed by the AI Service when a case is assigned to a consultant.
+    """
 
-class CaseSuggestions(BaseModel):
-    case_id: UUID
-    suggestions: List[Suggestion]
+    model_config = ConfigDict(populate_by_name=True)
 
-class CaseSolutionsGeneratedEvent(BaseModel):
+    case_id: UUID = Field(alias="caseId")
+    consultant_id: UUID = Field(alias="consultantId")
+
+
+class CaseDraftGeneratedEvent(BaseModel):
+    """
+    Event published by the AI Service after generating draft recommendations.
+    """
+
     case_id: UUID
-    suggestions: List[Suggestion]
+    consultant_id: UUID
+    recommendations: List[DraftRecommendation]
